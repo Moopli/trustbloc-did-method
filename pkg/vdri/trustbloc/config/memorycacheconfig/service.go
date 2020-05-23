@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/trustbloc/trustbloc-did-method/pkg/vdri/trustbloc/models"
 
 	"github.com/bluele/gcache"
@@ -55,6 +57,25 @@ func makeExpiryReplacementCache(cache gcache.Cache,
 		}
 
 		return fetcher(keyStr, keyStr)
+	}).EvictedFunc(func(key interface{}, value interface{}) {
+		keyStr, ok := key.(string)
+		if !ok {
+			log.Errorf("EvictedFunc: key `%s` must be string", key)
+			return
+		}
+
+		cacheable, duration, err := fetcher(keyStr, keyStr)
+
+		if err != nil {
+			log.Errorf("fetching consortium to refresh cache entry: %s", err.Error())
+			return
+			//	TODO: in the future, policy might dictate that we should keep the stale version if update fails
+		}
+
+		err = cache.SetWithExpire(keyStr, cacheable, *duration)
+		if err != nil {
+			log.Errorf("refreshing consortium cache entry: %s", err.Error())
+		}
 	}).Build()
 }
 
